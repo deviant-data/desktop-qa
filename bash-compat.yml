@@ -1,0 +1,139 @@
+name: bash-compat
+
+# Runs the full test suite on the two bash lineages the Desktop QA Suite has
+# to support:
+#   - bash 3.2  — the system /bin/bash on macOS (Apple pins it for licensing
+#                 reasons; every macOS user has this by default)
+#   - bash 4+   — everything else (Linux distros, Homebrew bash on macOS,
+#                 Windows via WSL/Git Bash)
+#
+# BUG-001 in the QA report was a silent failure on bash 3.2 caused by
+# `declare -A`. This workflow is the regression fence for that class of bug.
+# Any future change that reintroduces a bash 4-only construct without the
+# version guard firing will fail one of these jobs.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Manual trigger — useful when bumping the Homebrew bash pin or probing a
+  # flaky platform issue.
+  workflow_dispatch:
+
+jobs:
+  bash-4-linux:
+    # Ubuntu runners ship bash 5.x as /bin/bash. This job is the happy path:
+    # scripts should run end-to-end without tripping the version guard.
+    name: bash 4+ (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record bash version
+        run: bash --version | head -n1
+
+      - name: Syntax check all shell scripts
+        # `bash -n` parses without executing. Cheap smoke test that catches
+        # most typos before the full suite runs.
+        run: |
+          set -e
+          for f in *.sh; do
+            echo "checking $f"
+            bash -n "$f"
+          done
+
+      - name: Run existing test suite
+        # The QA report references tests under qa/tests/. They may not exist
+        # in a fresh clone yet, so tolerate absence — presence+failure is the
+        # signal we care about.
+        run: |
+          if [ -d qa/tests ]; then
+            failed=0
+            for t in qa/tests/*.sh; do
+              [ -f "$t" ] || continue
+              echo "--- running $t ---"
+              if ! bash "$t"; then
+                failed=1
+              fi
+            done
+            exit "$failed"
+          else
+            echo "No qa/tests/ directory; skipping."
+          fi
+
+  bash-3-macos:
+    # macOS runners ship bash 3.2.57 as /bin/bash. This job is the
+    # regression fence for BUG-001: if a future change reintroduces a bash 4+
+    # construct, the version guard must catch it and exit with a clear code.
+    name: bash 3.2 (macOS default)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm /bin/bash is 3.2
+        # If Apple ever ships bash 4 by default this job's premise changes,
+        # and we'd rather know immediately than have it silently become a
+        # no-op against bash 4+.
+        run: |
+          ver=$(/bin/bash --version | head -n1)
+          echo "$ver"
+          echo "$ver" | grep -q 'version 3' || {
+            echo "Expected bash 3.x at /bin/bash; got: $ver"
+            echo "Job assumptions invalid — review the workflow."
+            exit 1
+          }
+
+      - name: Version guard fires on bash 3.2 — 00_ingestion.sh
+        # We expect exit code 3 (ingestion's "unsupported bash version"). Any
+        # other outcome is a regression of BUG-001.
+        run: |
+          set +e
+          /bin/bash 00_ingestion.sh /tmp 2>stderr.txt
+          rc=$?
+          cat stderr.txt
+          if [ "$rc" -ne 3 ]; then
+            echo "Expected exit 3 from 00_ingestion.sh on bash 3.2; got $rc"
+            exit 1
+          fi
+          grep -q 'bash 4+ required' stderr.txt || {
+            echo "Missing actionable error message in stderr."
+            exit 1
+          }
+
+      - name: Version guard fires on bash 3.2 — 01_environment.sh
+        # Environment script uses exit code 4 for the same class of failure.
+        run: |
+          set +e
+          /bin/bash 01_environment.sh /tmp 2>stderr.txt
+          rc=$?
+          cat stderr.txt
+          if [ "$rc" -ne 4 ]; then
+            echo "Expected exit 4 from 01_environment.sh on bash 3.2; got $rc"
+            exit 1
+          fi
+          grep -q 'bash 4+ required' stderr.txt || {
+            echo "Missing actionable error message in stderr."
+            exit 1
+          }
+
+      - name: Install Homebrew bash
+        # Now validate the documented fix path actually works: a fresh
+        # `brew install bash` should give us a working bash 4+ that runs
+        # the scripts end-to-end.
+        run: brew install bash
+
+      - name: Scripts run under Homebrew bash 4+
+        run: |
+          set -e
+          BREW_BASH=$(brew --prefix)/bin/bash
+          "$BREW_BASH" --version | head -n1
+
+          # Create a minimal sample project to ingest.
+          tmp=$(mktemp -d)
+          printf '{"name":"smoke","main":"index.js"}\n' > "$tmp/package.json"
+          echo "console.log('hi')" > "$tmp/index.js"
+
+          "$BREW_BASH" 00_ingestion.sh "$tmp"
+          test -f "$tmp/qa/ingestion_summary.md"
+          echo "ingestion_summary.md produced under Homebrew bash — OK"
