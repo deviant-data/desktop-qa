@@ -24,7 +24,6 @@ Languages covered: HTML, CSS, JavaScript, TypeScript, Ruby, Ubuntu/Dockerfile, P
 - **Zero external dependencies** — no cloud services, no third-party APIs.
 - **Reproducible** — each run starts from the same scripted baseline. The
   sandbox image can be rebuilt from the shipped Dockerfile.
-- **Transparent** — every decision is grep-able in `test_log.txt`.
 - **Bounded** — failures in one stage do not cascade; every run produces a
   `qa_report.md` even when earlier stages fail.
 
@@ -151,3 +150,6 @@ On a successful run, the following files exist under `<project>/qa/`:
   mode avoids this at the cost of a one-time image build.
 - The plan generator is rule-based, not inferential — it will not discover
   novel test cases beyond its built-in catalog.
+
+
+# Oh, um.. just copy the tests folder (at ~/qa/tests) into the target directory's root before running, otherwise testing will be quick.
