@@ -151,5 +151,7 @@ On a successful run, the following files exist under `<project>/qa/`:
 - The plan generator is rule-based, not inferential — it will not discover
   novel test cases beyond its built-in catalog.
 
+---
 
-# Oh, um.. just copy the tests folder (at ~/qa/tests) into the target directory's root before running, otherwise testing will be quick.
+# Oh, um.. just copy ~/qa/tests/* into the target directory's root before running, otherwise testing will be quick.
+# Yes I could fix that, but I don't feel like it. Much like '--docker' not being included by default.
