@@ -157,3 +157,5 @@ On a successful run, the following files exist under `<project>/qa/`:
 
 - Just copy ~/qa into the target directory's root before running, otherwise testing will be quick.
 - Yes I could fix that, but I don't feel like it. Much like '--docker' not being included by default.
+
+- Claude remembers this one. I had him code himself out of it. Caught him brandishing a QA skill the other day.
